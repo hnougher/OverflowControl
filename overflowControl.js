@@ -34,22 +34,33 @@ OverflowControl.prototype = {
 			i = (continuePoint > 0 ? continuePoint : 0),
 			elemHeight = $curPage.height(),
 			contents = $curPage.contents(),
-			pauseTime = (new Date()).getTime() + 100
-			doNewPage = function(){window.setTimeout(function(){self.layoutPagesWorker2($curPage, i)}, 0)};
+			pauseTime = (new Date()).getTime() + 40,
+			doNewPage = function(v){window.setTimeout(function(){self.layoutPagesWorker2($curPage, v)}, 0)};
 		
 		for (; i < contents.length; i++) {
 			var $node = contents.eq(i);
-			if ($node.get(0).nodeType == 8) continue; // Comments do not have size
+			var nodeType = $node.get(0).nodeType;
+			if (nodeType == 8) continue; // Comments do not have size
 			if ($node.hasClass("newPage")) {
-				doNewPage();
+				doNewPage(i+1);
 				break;
 			}
 			
-			$node.after(this.$es);
-			var nodeHeight = ($node.get(0).nodeType == 3 ? this.$es.height() : $node.height());
-			if (this.$es.position().top + nodeHeight >= elemHeight) {
+			var top, bottom;
+			if (nodeType == 3) {
+				$node.after(this.$es);
+				top = this.$es.position().top;
+				bottom = top + this.$es.height();
+				this.$es.detach();
+			}
+			else {
+				top = $node.position().top;
+				bottom = top + $node.height();
+			}
+			//console.warn(top, " ", bottom, " ", elemHeight, " ", $node.get(0));
+			if (bottom >= elemHeight) {
 				// Overflow!
-				doNewPage();
+				doNewPage(i);
 				break;
 			}
 			if ((new Date()).getTime() >= pauseTime) {
@@ -57,7 +68,6 @@ OverflowControl.prototype = {
 				window.setTimeout(function(){self.layoutPagesWorker1($curPage, i)}, 0);
 				return;
 			}
-			this.$es.detach();
 		}
 		
 		// No Overflow
