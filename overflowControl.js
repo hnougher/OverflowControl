@@ -39,8 +39,11 @@ OverflowControl.prototype = {
 		
 		for (; i < contents.length; i++) {
 			var $node = contents.eq(i);
-			if ($node.hasClass("newPage"))
+			if ($node.get(0).nodeType == 8) continue; // Comments do not have size
+			if ($node.hasClass("newPage")) {
 				doNewPage();
+				break;
+			}
 			
 			$node.after(this.$es);
 			var nodeHeight = ($node.get(0).nodeType == 3 ? this.$es.height() : $node.height());
