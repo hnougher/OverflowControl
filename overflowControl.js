@@ -5,7 +5,7 @@ var OverflowControl = function (elemToPageinate, cssClassOfPage) {
 	this.myPageUID = Math.random();
 	
 	// An empty span for locating overflow
-	this.$es = $("<span style='background:#F00;outline:1px solid #F00;margin:0;padding:0;'>a</span>");
+	this.$es = $("<span style='background:#F00;outline:1px solid #F00;margin:0;padding:0;'></span>");
 	//this.$es = $("<span style='border:0px solid #000;margin:0;padding:0'></span>");
 	
 	// move all current content in $parent into a page.
@@ -16,81 +16,132 @@ var OverflowControl = function (elemToPageinate, cssClassOfPage) {
 	// Split all text nodes in content to smallest possible parts
 	this.splitTextNodes($page);
 	
-	//this.findOverflow($page, $page);
-	this.layoutPages($page);
+	// Record the total number of elements on the page for progress reporting
+	this.totalRootElem = $page.contents().length;
+	
+	// Let the caller finish what its doing before starting the layout process
+	var self = this;
+	window.setTimeout(function(){self.layoutPagesWorker1($page)}, 0)
 };
 
 OverflowControl.prototype = {
 	
-	layoutPages: function ($firstPage) {
-		// This process is split into workers for the *very* slow IE
-		this.layoutPagesWorker1($firstPage);
-	},
 	//This method tries to locate the last word which fits on the page without causing overflow.
 	layoutPagesWorker1: function ($curPage, continuePoint) {
-		//console.log("layoutPagesWorker1");
-		$curPage.addClass("mkAbsolute");
+		//console.log("layoutPagesWorker1", continuePoint);
 		var self = this,
-			i = (continuePoint > 0 ? continuePoint : 0),
+			continuePoint = (continuePoint && continuePoint.length ? continuePoint : [0]),
 			elemHeight = $curPage.height(),
 			contents = $curPage.contents(),
 			pauseTime = (new Date()).getTime() + 40,
 			doNewPage = function(v){window.setTimeout(function(){self.layoutPagesWorker2($curPage, v)}, 0)};
 		
+		// Update Progress
+		$(this).trigger(jQuery.Event("progress", {
+			currentIndex: this.totalRootElem - contents.length,
+			totalIndex: this.totalRootElem,
+			amountDone: (this.totalRootElem - contents.length) / this.totalRootElem
+			}));
+		
+		// Take the index we are currently working on
+		var i = continuePoint.pop();
+		
+		if (continuePoint.length == 0)
+			$curPage.addClass("mkAbsolute");
+		
+		// if there is still indexes in the continuePoint then recurse down to that element
+		for (var j = 0; j < continuePoint.length; j++) {
+			contents = contents.eq(continuePoint[j]).contents();
+		}
+		
 		for (; i < contents.length; i++) {
 			var $node = contents.eq(i);
-			var nodeType = $node.get(0).nodeType;
-			if (nodeType == 8) continue; // Comments do not have size
+			//console.log($node);
 			if ($node.hasClass("newPage")) {
-				doNewPage(i+1);
+				continuePoint.push(i+1);
+				doNewPage(continuePoint);
 				break;
 			}
-			
-			var top, bottom;
-			if (nodeType == 3) {
-				$node.after(this.$es);
-				top = this.$es.position().top;
-				bottom = top + this.$es.height();
-				this.$es.detach();
-			}
-			else {
-				top = $node.position().top;
-				bottom = top + $node.height();
-			}
 			//console.warn(top, " ", bottom, " ", elemHeight, " ", $node.get(0));
-			if (bottom >= elemHeight) {
+			if (this.layoutPagesWorker1_NodeOverflow($node, elemHeight)) {
 				// Overflow!
-				doNewPage(i);
+				if ($node.hasClass("paginate_splitable")) {
+					continuePoint.push(i);
+					continuePoint.push(0);
+					this.layoutPagesWorker1($curPage, continuePoint);
+					return;
+				}
+				else {
+					// startNode contains where to star the new page
+					// make certain that there is at least one content node on the page
+					var startNode = (i > 0 ? i : 1);
+					continuePoint.push(startNode);
+					doNewPage(continuePoint);
+				}
 				break;
 			}
 			if ((new Date()).getTime() >= pauseTime) {
 				// Timeout!
-				window.setTimeout(function(){self.layoutPagesWorker1($curPage, i)}, 0);
+				continuePoint.push(i);
+				window.setTimeout(function(){self.layoutPagesWorker1($curPage, continuePoint)}, 0);
 				return;
 			}
 		}
 		
 		// No Overflow
 		$curPage.removeClass("mkAbsolute");
+		
+		if (continuePoint.length == 0 && i == contents.length) {
+			// THE END!
+			$(this).trigger("complete");
+		}
 	},
+	// Returns true if the element will go further than height
+	layoutPagesWorker1_NodeOverflow: function ($node, height) {
+		var nodeType = $node.get(0).nodeType;
+		if (nodeType == 8) return false; // Comments do not have size
+		
+		var top, bottom;
+		if (nodeType == 3) {
+			$node.after(this.$es);
+			top = this.$es.position().top;
+			bottom = top + this.$es.height();
+			this.$es.detach();
+		}
+		else {
+			top = $node.position().top;
+			bottom = top + $node.height();
+		}
+		return (bottom >= height);
+	},
+	
 	// Move this.$es and everything after it to an array
 	layoutPagesWorker2: function ($curPage, overflowIndex) {
-		//console.log("layoutPagesWorker2");
-		var elements = [];
-		var contents = $curPage.contents();
-		for (var i = overflowIndex; i < contents.length; i++)
-			elements.push(contents.eq(i));
-		var self = this;
-		window.setTimeout(function(){self.layoutPagesWorker3($curPage, elements)}, 0);
-	},
-	// Move everything in elements to a new page
-	layoutPagesWorker3: function ($curPage, elements) {
-		//console.log("layoutPagesWorker3");
-		var $newPage = this.mkPage();
-		for (var i = 0; i < elements.length; i++)
-			$newPage.append(elements[i]);
+		//console.log("layoutPagesWorker2", overflowIndex);
+		var self = this,
+			$newPage = this.mkPage(),
+			contents = $curPage.contents();
+		
+		// For the first element we have to split it into two if there is more than one overflowIndex
+		function splitNode($parent, $node, splitDepth) {
+			var $clone = $node.clone(true, true);
+			var nodeContents = $node.contents();
+			var isTopNode = (splitDepth + 1 >= overflowIndex.length);
+			nodeContents.slice(overflowIndex[splitDepth] + (isTopNode ? 0 : 1)).remove();
+			$clone.contents().slice(0, overflowIndex[splitDepth] + (isTopNode ? 0 : 1)).remove();
+			$parent.prepend($clone);
+			if (!isTopNode)
+				splitNode($clone, nodeContents.eq(overflowIndex[splitDepth]), splitDepth + 1);
+		}
+		if (overflowIndex.length > 1) {
+			splitNode($newPage, contents.eq(overflowIndex[0]), 1);
+			overflowIndex[0]++;
+		}
+		
+		// Now for the rest of the elements
+		for (var i = overflowIndex[0]; i < contents.length; i++)
+			$newPage.append(contents.eq(i));
 		$curPage.after($newPage);
-		var self = this;
 		window.setTimeout(function(){self.layoutPagesWorker1($newPage)}, 0);
 	},
 	
@@ -107,6 +158,9 @@ OverflowControl.prototype = {
 					var tn = document.createTextNode(text[i]);
 					self.$es.before(tn);
 				}
+			}
+			else if ($this.hasClass("paginate_splitable")) {
+				self.splitTextNodes($this);
 			}
 		});
 	},
