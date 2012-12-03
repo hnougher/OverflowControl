@@ -1,8 +1,11 @@
 ﻿
+// Something Very Useful
+jQuery.fn.reverse = [].reverse;
+
 var OverflowControl = function (elemToPageinate, cssClassOfPage) {
 	this.$parent = $(elemToPageinate);
 	this.pageClass = cssClassOfPage;
-	this.myPageUID = Math.random();
+	this.activeTimer = false;
 	
 	// An empty span for locating overflow
 	this.$es = $("<span style='background:#F00;outline:1px solid #F00;margin:0;padding:0;'></span>");
@@ -21,7 +24,7 @@ var OverflowControl = function (elemToPageinate, cssClassOfPage) {
 	
 	// Let the caller finish what its doing before starting the layout process
 	var self = this;
-	window.setTimeout(function(){self.layoutPagesWorker1($page)}, 0)
+	this.reflow();
 };
 
 OverflowControl.prototype = {
@@ -34,7 +37,7 @@ OverflowControl.prototype = {
 			elemHeight = $curPage.height(),
 			contents = $curPage.contents(),
 			pauseTime = (new Date()).getTime() + 40,
-			doNewPage = function(v){window.setTimeout(function(){self.layoutPagesWorker2($curPage, v)}, 0)};
+			doNewPage = function(v){self.activeTimer = window.setTimeout(function(){self.layoutPagesWorker2($curPage, v)}, 0)};
 		
 		// Update Progress
 		$(this).trigger(jQuery.Event("progress", {
@@ -83,7 +86,7 @@ OverflowControl.prototype = {
 			if ((new Date()).getTime() >= pauseTime) {
 				// Timeout!
 				continuePoint.push(i);
-				window.setTimeout(function(){self.layoutPagesWorker1($curPage, continuePoint)}, 0);
+				this.activeTimer = window.setTimeout(function(){self.layoutPagesWorker1($curPage, continuePoint)}, 0);
 				return;
 			}
 		}
@@ -119,12 +122,13 @@ OverflowControl.prototype = {
 	layoutPagesWorker2: function ($curPage, overflowIndex) {
 		//console.log("layoutPagesWorker2", overflowIndex);
 		var self = this,
-			$newPage = this.mkPage(),
+			$newPage = this.mkPage($curPage),
 			contents = $curPage.contents();
 		
 		// For the first element we have to split it into two if there is more than one overflowIndex
 		function splitNode($parent, $node, splitDepth) {
 			var $clone = $node.clone(true, true);
+			$clone.addClass('overflowControlParent').data('overflowControlParent', $node);
 			var nodeContents = $node.contents();
 			var isTopNode = (splitDepth + 1 >= overflowIndex.length);
 			nodeContents.slice(overflowIndex[splitDepth] + (isTopNode ? 0 : 1)).remove();
@@ -142,7 +146,7 @@ OverflowControl.prototype = {
 		for (var i = overflowIndex[0]; i < contents.length; i++)
 			$newPage.append(contents.eq(i));
 		$curPage.after($newPage);
-		window.setTimeout(function(){self.layoutPagesWorker1($newPage)}, 0);
+		this.activeTimer = window.setTimeout(function(){self.layoutPagesWorker1($newPage)}, 0);
 	},
 	
 	splitTextNodes: function ($container) {
@@ -176,10 +180,52 @@ OverflowControl.prototype = {
 
 	},
 
-	mkPage: function () {
+	mkPage: function ($curPage) {
 		var $page = $("<div></div>");
-		$page.addClass(this.pageClass);
-		$page.data("overflowControlPageUID", this.myPageUID);
+		$page.addClass(this.pageClass).addClass('overflowControlPage');
+		if ($curPage)
+			$page.data('overflowControlPage', $curPage);
 		return $page;
+	},
+	
+	/**
+	 * Resplits the pages.
+	 * Useful when you want to resize the pages.
+	 */
+	reflow: function () {
+		this.revertSplit();
+		var $page = $('.overflowControlPage:first');
+		var self = this;
+		this.activeTimer = window.setTimeout(function(){self.layoutPagesWorker1($page)}, 0)
+	},
+	
+	/**
+	 * Completely remove all uses of overflowControl.
+	 * Its a good idea to not use this instance again after calling this.
+	 */
+	removeControl: function () {
+		this.revertSplit();
+		var $page = $('.overflowControlPage:first');
+		$page.parent().append($page.contents());
+		$page.remove();
+	},
+	
+	/**
+	 * Turns the document back into one page, ready to split it up again.
+	 */
+	revertSplit: function () {
+		clearTimeout(this.activeTimer);
+		$('.overflowControlParent').reverse().each(function () {
+			var $this = $(this);
+			$this.data('overflowControlParent').append($this.contents());
+			$this.remove();
+		});
+		$('.overflowControlPage').reverse().each(function () {
+			var $this = $(this);
+			if ($this.data('overflowControlPage')) {
+				$this.data('overflowControlPage').append($this.contents());
+				$this.remove();
+			}
+		});
 	}
 };

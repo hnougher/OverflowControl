@@ -8,14 +8,16 @@
 	<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
 	
 	<style>
+		body {
+			margin: 2em;
+		}
 		.page {
 			height: 400px;
-			margin: 2em;
 			outline: 1px solid #00F;
 			/*overflow: auto;*/
 			overflow: visible;
-			padding: 10px;
 			width: 600px;
+			/*width: 100%;*/
 		}
 		.page * {
 			outline: 1px outset #0F0;
@@ -32,7 +34,17 @@
 	<script type="text/javascript" src="overflowControl.js"></script>
 	<script type="text/javascript">
 	$(function () {
-		new OverflowControl("#pageinate", "page");
+		var oc = new OverflowControl("#pageinate", "page");
+		//setTimeout(function(){oc.revertSplit()}, 5000);
+		//setTimeout(function(){oc.removeControl()}, 5000);
+		
+		/*var resizeTimer = false;
+		$(window).on('resize', function () {
+			clearTimeout(resizeTimer);
+			resizeTimer = setTimeout(function () {
+				oc.reflow();
+			}, 500);
+		});*/
 	});
 	</script>
 </head>
@@ -84,7 +96,7 @@
     https://www.w3.org/Bugs/Public/show_bug.cgi?id=16375
     https://www.w3.org/Bugs/Public/show_bug.cgi?id=16376
 
-2012-03-16 dschulze@adobe.com
+<div class="paginate_splitable" style="color:#700">2012-03-16 dschulze@adobe.com
     Removed skew() transformation function after request on public-fx.
     https://www.w3.org/Bugs/Public/show_bug.cgi?id=16300
 
@@ -125,7 +137,7 @@
     https://www.w3.org/Bugs/Public/show_bug.cgi?id=15797.
 
 2012-03-12 ayg@aryeh.name
-    Hyperlink all instances of "bounding box"
+    Hyperlink all instances of "bounding box"</div>
 
 2012-03-12 ayg@aryeh.name
     Define rotate[XYZ] in terms of rotate3d
